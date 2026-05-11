@@ -48,6 +48,7 @@ jobs:
 
       - name: Auto-merge aktivieren
         if: success()
+        continue-on-error: true
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
