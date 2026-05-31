@@ -17,7 +17,10 @@ teams:
     display_name: "Team Fabinalii"
     github_handles: [akiev, feith, zakharuk]
   - id: team_4
-    display_name: "Team 4"
+    display_name: "Team 4 SpotOptim"
+    github_handles: [bartzbeielstein]
+  - id: team_4_optuna
+    display_name: "Team 4 Optuna"
     github_handles: [bartzbeielstein]
   - id: neura
     display_name: "Team Neura"
