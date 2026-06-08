@@ -167,11 +167,11 @@ teams:
     certified: "No"
   - id: voltrion
     display_name: "Voltrion"
-    github_handles: [Malakamz, RoyalKnighter, DarkReaperGT, Malekuti, esmahxhj]
+    github_handles: [Malakamz, DarkReaperGT, Malekuti, esmahxhj]
     group: "ING"
     certified: "No"
   - id: voltrion_entsoe
     display_name: "Voltrion (ENTSO-E)"
-    github_handles: [Malakamz, RoyalKnighter, DarkReaperGT, Malekuti, esmahxhj]
+    github_handles: [Malakamz, DarkReaperGT, Malekuti, esmahxhj]
     group: "ING"
     certified: "No"
