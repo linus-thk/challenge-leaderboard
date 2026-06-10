@@ -32,6 +32,14 @@ PUBLIC_DIR = REPO_ROOT / "public"
 ENTSOE_BASELINE_ID = "entsoe"
 TEMPLATE_DIR = REPO_ROOT / "templates"
 WEEKDAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+# „Clean restart" des Wettbewerbs: nur Zieltage AB diesem Datum (UTC) zählen
+# für das obere „Leaderboard" und die „Mittlere … je Team"-Balken — alle
+# Mittelwerte starten dort bei null. Zieltage DAVOR bleiben als eingefrorene
+# „Leaderboard Test Phase" am Seitenende erhalten. Die fortlaufenden Figuren
+# („Prognose vs. Ist-Last", „MAE-Verlauf", „Tagesfehler je Team") laufen über
+# die volle Historie weiter. target_date ist ISO 'YYYY-MM-DD' → der
+# lexikografische Vergleich entspricht dem Datumsvergleich.
+RESTART_DATE = "2026-06-10"
 
 
 def load_teams() -> dict[str, str]:
@@ -350,7 +358,8 @@ def load_logo_uri(path: Path) -> str:
 
 
 def render(
-    board: pd.DataFrame, daily: dict, figs: dict[str, str], logo_uri: str = "",
+    board: pd.DataFrame, board_test: pd.DataFrame, daily: dict,
+    figs: dict[str, str], logo_uri: str = "",
     model_cards: list[dict[str, str]] | None = None,
     model_card_status: dict[str, bool | None] | None = None,
     groups: dict[str, str] | None = None,
@@ -366,16 +375,20 @@ def render(
     # Die ~4.8 MB Plotly-Bibliothek nur einbetten, wenn überhaupt eine Figur
     # gerendert wird (leeres Leaderboard → keine Charts → kein Bundle).
     plotlyjs = get_plotlyjs() if any(figs.values()) else ""
+    # Zwei Ranglisten: ``rows`` = Live-Wettbewerb (oberes „Leaderboard"),
+    # ``rows_test`` = eingefrorene Testphase (Sektion am Seitenende).
     rows = annotate_leaderboard_best(board.to_dict(orient="records"))
+    rows_test = annotate_leaderboard_best(board_test.to_dict(orient="records"))
     # Status-Spalte: Model Card vorhanden? Gleiche Quelle wie „About the
     # Models" (teams.yml) — None für Pseudo-Teams und unbekannte Ids.
     status = model_card_status or {}
     grp = groups or {}
-    for r in rows:
+    for r in (*rows, *rows_test):
         r["model_card_status"] = status.get(r["team_id"])
         r["group"] = grp.get(r["team_id"])
     html = template.render(
         rows=rows,
+        rows_test=rows_test,
         daily=daily,
         figs=figs,
         plotlyjs=plotlyjs,
@@ -420,14 +433,33 @@ def main() -> None:
     pseudo = entsoe_pseudo_scores(actuals, scored)
     if not pseudo.empty:
         scores = pd.concat([scores, pseudo], ignore_index=True)
-    board = aggregate(scores, names)
-    daily = daily_breakdown(scores, names, list(board["team_id"]))
+
+    # Phasen-Trennung (clean restart, s. RESTART_DATE): Mittelwerte des oberen
+    # „Leaderboard" und der „Mittlere … je Team"-Balken zählen nur Live-Tage
+    # (>= RESTART_DATE) und starten bei null; die eingefrorene Testphase
+    # (< RESTART_DATE) erscheint separat am Seitenende. Die fortlaufenden
+    # Figuren (Prognose, MAE-Verlauf, Tagesfehler) nutzen weiter die volle
+    # Historie (``scores``).
+    if not scores.empty:
+        td = scores["target_date"].astype(str)
+        scores_live = scores[td >= RESTART_DATE].copy()
+        scores_test = scores[td < RESTART_DATE].copy()
+    else:
+        scores_live = scores_test = scores
+    board = aggregate(scores_live, names)         # oberes „Leaderboard" (live)
+    board_test = aggregate(scores_test, names)    # „Leaderboard Test Phase"
+    # Zeilen-Reihenfolge der fortgeführten Tages-Tabellen: Voll-Historie-Rang,
+    # damit jedes je bewertete Team gelistet bleibt (das Live-Board ist zum
+    # Start leer und taugt nicht als Reihenfolge).
+    board_full = aggregate(scores, names)
+    daily = daily_breakdown(scores, names, list(board_full["team_id"]))
     figs = build_figures(board, daily, scores, names, actuals)
     logo_uri = load_logo_uri(REPO_ROOT / "logo" / "spotlogo.png")
-    render(board, daily, figs, logo_uri, load_model_cards(),
+    render(board, board_test, daily, figs, logo_uri, load_model_cards(),
            load_model_card_status(), load_groups())
-    print(f"[build] Leaderboard mit {len(board)} Teams "
-          f"({len(daily['dates'])} bewertete Tage) -> public/index.html")
+    print(f"[build] Live-Leaderboard {len(board)} Teams, Testphase "
+          f"{len(board_test)} Teams ({len(daily['dates'])} bewertete Tage) "
+          f"-> public/index.html")
 
 
 if __name__ == "__main__":

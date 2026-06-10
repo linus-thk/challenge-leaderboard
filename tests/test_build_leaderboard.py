@@ -91,10 +91,11 @@ def test_annotate_leaderboard_best_marks_columnwise_winners():
 
 def test_main_writes_html_and_json(tmp_path):
     _seed_teams(tmp_path)
+    # Zieltage >= RESTART_DATE -> Live-Leaderboard (scores.json = Live-Wertung).
     _seed(tmp_path, [
-        {"team_id": "team_4", "target_date": "2026-05-26", "mae": 100.0,
+        {"team_id": "team_4", "target_date": "2026-06-26", "mae": 100.0,
          "rmse": 100.0, "mape": 0.1},
-        {"team_id": "hot_rod", "target_date": "2026-05-26", "mae": 200.0,
+        {"team_id": "hot_rod", "target_date": "2026-06-26", "mae": 200.0,
          "rmse": 200.0, "mape": 0.2},
     ])
     bl.main()
@@ -202,8 +203,10 @@ def test_main_writes_daily_section_in_html(tmp_path):
     assert 'data-week="2026-W22"' in html
     # Tagesbeste fett: je Spalte genau eine best-Zelle, in allen 5 Tabellen
     # (hier 2 Spalten mit jeweils genau einem Wert -> 5 x 2). Nur den
-    # Tagesfehler-Teil zählen — das Leaderboard hat eigene best-Zellen.
-    daily_html = html[html.index("Tagesfehler je Team [MAE]"):]
+    # Tagesfehler-Teil zählen — beide Leaderboards haben eigene best-Zellen
+    # (die Testphase steht direkt darunter).
+    daily_html = html[html.index("Tagesfehler je Team [MAE]"):
+                      html.index("<h2>Leaderboard Test Phase</h2>")]
     assert daily_html.count('class="num best"') == 10
     daily = json.loads((tmp_path / "public" / "data" / "daily.json").read_text())
     assert daily["dates"] == ["2026-05-12", "2026-05-26"]
@@ -244,10 +247,12 @@ def _write_submission(tmp_path, team: str, date: str):
 
 def test_main_embeds_charts_but_not_forecast_without_actuals(tmp_path):
     _seed_teams(tmp_path)
+    # Zieltage >= RESTART_DATE -> die „Mittlere … je Team"-Balken (Live-Board)
+    # sind befüllt; vor dem Neustart wären sie leer und die Sektionen entfielen.
     _seed(tmp_path, [
-        {"team_id": "team_4", "target_date": "2026-05-26", "mae": 100.0,
+        {"team_id": "team_4", "target_date": "2026-06-26", "mae": 100.0,
          "rmse": 100.0, "mape": 0.1, "carried_forward": False},
-        {"team_id": "hot_rod", "target_date": "2026-05-26", "mae": 200.0,
+        {"team_id": "hot_rod", "target_date": "2026-06-26", "mae": 200.0,
          "rmse": 200.0, "mape": 0.2, "carried_forward": False},
     ])
     bl.main()
@@ -607,12 +612,12 @@ def test_entsoe_pseudo_authoritative_overrides_parquet(tmp_path):
     # submission) must be IGNORED — the derived value wins.
     _seed_teams(tmp_path)
     _seed(tmp_path, [
-        {"team_id": "team_4", "target_date": "2026-05-26", "mae": 100.0,
+        {"team_id": "team_4", "target_date": "2026-06-26", "mae": 100.0,
          "rmse": 100.0, "mape": 0.1, "carried_forward": False},
-        {"team_id": "entsoe", "target_date": "2026-05-26", "mae": 42.0,
+        {"team_id": "entsoe", "target_date": "2026-06-26", "mae": 42.0,
          "rmse": 42.0, "mape": 0.04, "carried_forward": True},
     ])
-    _write_actuals(tmp_path, "2026-05-26")        # forecast = load-10 -> MAE 10
+    _write_actuals(tmp_path, "2026-06-26")        # forecast = load-10 -> MAE 10
     bl.main()
     data = json.loads((tmp_path / "public" / "data" / "scores.json").read_text())
     entsoe = next(r for r in data if r["team_id"] == "entsoe")
@@ -624,11 +629,12 @@ def test_entsoe_pseudo_authoritative_overrides_parquet(tmp_path):
 
 def test_main_ranks_entsoe_pseudo_in_leaderboard(tmp_path):
     _seed_teams(tmp_path)
+    # Zieltag >= RESTART_DATE -> entsoe-Pseudo-Team im Live-Leaderboard.
     _seed(tmp_path, [
-        {"team_id": "team_4", "target_date": "2026-05-26", "mae": 100.0,
+        {"team_id": "team_4", "target_date": "2026-06-26", "mae": 100.0,
          "rmse": 100.0, "mape": 0.1, "carried_forward": False},
     ])
-    _write_actuals(tmp_path, "2026-05-26")        # carries entsoe_forecast_mw
+    _write_actuals(tmp_path, "2026-06-26")        # carries entsoe_forecast_mw
     bl.main()
     data = json.loads((tmp_path / "public" / "data" / "scores.json").read_text())
     assert "entsoe" in [r["team_id"] for r in data]
