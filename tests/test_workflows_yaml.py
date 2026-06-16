@@ -21,12 +21,16 @@ def _load(name: str) -> dict:
 
 
 def test_score_daily_has_09_utc_cron():
-    # 09:00 UTC gives margin over ENTSO-E's H+1 publication floor for the
-    # last UTC hour; see the comment in score-daily.yml and README.
+    # The 09 UTC hour gives margin over ENTSO-E's H+1 publication floor for
+    # the last UTC hour; see the comment in score-daily.yml and README. The
+    # minute is deliberately off the full hour (GitHub delays/drops schedules
+    # at :00), so assert the hour, not the exact minute.
     wf = _load("score-daily.yml")
     on = wf[True] if True in wf else wf["on"]  # PyYAML quirk: `on` -> True
     crons = [s["cron"] for s in on["schedule"]]
-    assert "0 9 * * *" in crons
+    hours = {c.split()[1] for c in crons}
+    assert "9" in hours, f"expected a 09 UTC cron, got {crons}"
+    assert "0 9 * * *" not in crons, "cron minute must be off the full hour (:00)"
     assert "0 7 * * *" not in crons, "07:00 UTC cron must be retired (too early)"
 
 
@@ -51,6 +55,17 @@ def test_score_daily_uses_catch_up():
     assert "--catch-up" in body, (
         "score-daily.yml must run score_day.py with --catch-up so a missed "
         "scheduled run is recovered on the next run."
+    )
+
+
+def test_score_daily_checks_entsoe_revisions():
+    # ENTSO-E korrigiert Ist-Lastwerte nachträglich; der Tageslauf muss das
+    # rückwärtige Fenster prüfen und abweichende Tage neu bewerten — sonst
+    # bleiben gegen implausible Daten benotete Tage für immer falsch.
+    body = (WF / "score-daily.yml").read_text()
+    assert "revise_scores.py" in body, (
+        "score-daily.yml must run scripts/revise_scores.py so that "
+        "ENTSO-E load corrections trigger a re-evaluation."
     )
 
 
@@ -101,6 +116,12 @@ def test_validate_pr_is_not_pull_request_target():
     wf = _load("validate-pr.yml")
     on = wf[True] if True in wf else wf["on"]
     assert "pull_request_target" not in on
+
+
+def test_validate_pr_counts_only_new_submission_files():
+    body = (WF / "validate-pr.yml").read_text()
+    assert "--diff-filter=A" in body
+    assert "genau eine neue Submission hinzufügen" in body
 
 
 def test_ci_workflow_runs_pytest_and_actionlint():

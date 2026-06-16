@@ -2,12 +2,15 @@ name: Daily Scoring
 
 on:
   schedule:
-    # Täglich 09:00 UTC. ENTSO-E veröffentlicht Actual Total Load (6.1.A)
+    # Täglich 09:23 UTC. ENTSO-E veröffentlicht Actual Total Load (6.1.A)
     # regulatorisch bis H+1, real treten aber TSO-Verzögerungen, fehlende
-    # Stunden und „HTTP 200 + No matching data" auf. 09:00 UTC gibt ~8 h
+    # Stunden und „HTTP 200 + No matching data" auf. 09:xx UTC gibt ~8 h
     # Sicherheitsmarge nach der H+1-Frist der letzten UTC-Stunde (01:00 UTC),
     # ergänzt durch Retry/Backoff + Catch-up in score_day.py.
-    - cron: "0 9 * * *"
+    # Minute 23 statt 00: GitHub stellt scheduled runs zur vollen Stunde
+    # (Lastspitze) regelmäßig verzögert in die Queue oder lässt sie ganz
+    # ausfallen. Eine „krumme" Minute abseits :00 reduziert die Drop-Rate.
+    - cron: "23 9 * * *"
   workflow_dispatch:
     inputs:
       target_date:
@@ -87,6 +90,21 @@ jobs:
         continue-on-error: true
         run: uv run python scripts/fetch_actuals.py --to "${{ steps.target.outputs.date }}"
 
+      - name: ENTSO-E-Revisionen prüfen und ggf. neu bewerten
+        # ENTSO-E korrigiert veröffentlichte Ist-Lastwerte gelegentlich
+        # nachträglich (fehlende TSO-Zonen, implausible Stunden). Vergleicht
+        # die letzten 21 benoteten Tage mit data/actual_load.parquet und
+        # bewertet abweichende Tage neu — Scores und Ist-Load wandern über
+        # denselben PR unten. Fenster 21 statt 7: die Korrekturen der
+        # 06-03/04-Korruption (bis 11,9 GW/h) waren noch 8–9 Tage nach
+        # Veröffentlichung als neu nachweisbar; einen festen ENTSO-E-
+        # Revisionsprozess gibt es nicht (SMARD-Handbuch §1.3, DDD 6.1.A
+        # "Updates: Not obligatory but possible"). continue-on-error: best
+        # effort wie der Chart-Schritt; das Fenster wird morgen ohnehin
+        # erneut geprüft.
+        continue-on-error: true
+        run: uv run python scripts/revise_scores.py --end "${{ steps.target.outputs.date }}" --window 21
+
       - name: Score-Stand-PR öffnen
         id: cpr
         uses: peter-evans/create-pull-request@v8
@@ -102,6 +120,9 @@ jobs:
           body: |
             Automatisierter Score-Stand für den Zieltag **${{ steps.target.outputs.date }}**,
             inkl. nachgezogener Ist-Load-Daten (`data/actual_load.parquet`) für die Charts.
+            Enthält ggf. Neubewertungen bereits benoteter Tage, falls ENTSO-E
+            Ist-Lastwerte nachträglich korrigiert hat (`scripts/revise_scores.py`,
+            Details im Workflow-Log).
 
             Erzeugt von `.github/workflows/score-daily.yml` (`scripts/score_day.py` +
             `scripts/fetch_actuals.py`).
